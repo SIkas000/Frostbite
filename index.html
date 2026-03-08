@@ -1,27 +1,34 @@
 <!DOCTYPE html>
 <html lang="pt-br">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Frostbite Antigravity - Atari Style</title>
+    <title>Frostbite Web Tribute - Atari 2600 Clone</title>
+    <meta name="description"
+        content="Um clone fiel do clássico Frostbite do Atari 2600, desenvolvido para navegadores. Costura iglus e desvie de inimigos!">
     <link rel="stylesheet" href="style.css">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 </head>
+
 <body>
     <div id="game-container">
-        <div id="hud">
-            <div class="stat">PONTOS: <span id="score">000000</span></div>
-            <div class="stat">TEMP: <span id="temp">45</span>°</div>
-            <div class="stat">VIDAS: <span id="lives">3</span></div>
-        </div>
         <canvas id="gameCanvas"></canvas>
-        <div id="overlay" class="hidden">
-            <h1 id="overlay-title">FROSTBITE</h1>
-            <p id="overlay-msg">PRESSIONE ESPAÇO PARA COMEÇAR</p>
+        <div id="ui-overlay">
+            <div id="score">0</div>
+            <div id="temp">45°C</div>
+            <div id="lives">3</div>
+            <div id="level">1</div>
         </div>
     </div>
+
+    <!-- Scripts -->
+    <script src="audio.js"></script>
+    <script src="sprites.js"></script>
+    <script src="physics.js"></script>
+    <script src="player.js"></script>
+    <script src="enemies.js"></script>
+    <script src="level.js"></script>
     <script src="game.js"></script>
 </body>
+
 </html>

@@ -1,406 +1,272 @@
+/**
+ * Main Game Controller for Frostbite Web Tribute
+ */
+
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
-const scoreEl = document.getElementById('score');
-const tempEl = document.getElementById('temp');
-const livesEl = document.getElementById('lives');
-const overlay = document.getElementById('overlay');
-const overlayTitle = document.getElementById('overlay-title');
-const overlayMsg = document.getElementById('overlay-msg');
 
-// Set internal resolution (Atari style)
-canvas.width = 160;
-canvas.height = 192;
+// Game constants (Synced with frostbite.bas)
+const CANVAS_WIDTH = 400; // Original internal resolution
+const CANVAS_HEIGHT = 300;
+const INITIAL_TEMP = 45;
+const ONEUP_GOAL = 5000;
+const DOOR_X = 276;
 
-const COLORS = {
-    WATER: '#000088',
-    ICE: '#FFFFFF',
-    ICE_ACTIVE: '#00FFFF',
-    PLAYER: '#FFCCCC',
-    BEAR: '#FFFFFF',
-    BIRD: '#FFFF00',
-    IGLOO: '#FFFFFF',
-    BANK: '#FFFFFF',
-    BLACK: '#000000'
+canvas.width = CANVAS_WIDTH;
+canvas.height = CANVAS_HEIGHT;
+
+// Sprites are now pre-rendered via sprites.js
+let spritesLoaded = true; // Immediately true because they render synchronously
+
+// Game State
+const state = {
+    score: 0,
+    lives: 3,
+    level: 1,
+    gameOver: false,
+    mode: 'playing', // 'playing', 'fishScore', 'drowning', 'freezing', 'levelEndIgloo', 'levelEndTemp'
+    fishScorePending: 0,
+    levelEndTimer: 0,
+    iglooDisassembleTimer: 0,
+    iglooDisassemblePiecesLeft: 0,
+    levelBonusPointsPerPiece: 0,
+    framesPerDegree: 5,
+    input: {
+        left: false,
+        right: false,
+        up: false,
+        down: false,
+        space: false
+    }
 };
 
-const STATE = {
-    MENU: 0,
-    PLAYING: 1,
-    GAME_OVER: 2,
-    WON: 3
-};
-
-let gameState = STATE.MENU;
-let score = 0;
-let temp = 45;
-let lives = 3;
-let lastTime = 0;
-let tempTimer = 0;
-let iglooBricks = 0;
-let level = 1;
-const MAX_IGLOO_BRICKS = 15;
-
-// Player Settings
-const player = {
-    x: 80,
-    y: 160,
-    targetY: 160,
-    width: 6,
-    height: 8,
-    speed: 2,
-    row: 4, // 0: Bank, 1-4: Ice rows, 5: Home
-    isJumping: false,
-    jumpProgress: 0,
-    dirX: 0,
-    dirY: 0
-};
-
-// Ice Rows
-const rows = [
-    { y: 40, speed: 0.5, dir: 1, ice: [] },
-    { y: 70, speed: -0.8, dir: -1, ice: [] },
-    { y: 100, speed: 0.6, dir: 1, ice: [] },
-    { y: 130, speed: -0.4, dir: -1, ice: [] }
-];
-
-function initIce() {
-    rows.forEach(row => {
-        row.ice = [];
-        for (let i = 0; i < 4; i++) {
-            row.ice.push({
-                x: i * 50,
-                width: 30,
-                state: 0
-            });
-        }
-    });
-}
+// Objects
+const player = new Player();
+const level = new Level();
+const enemyManager = new EnemyManager();
 
 // Input Handling
-const keys = {};
-window.addEventListener('keydown', e => {
-    keys[e.code] = true;
-    if (e.code === 'Space') {
-        if (gameState === STATE.MENU || gameState === STATE.GAME_OVER) {
-            startGame();
-        } else if (gameState === STATE.WON) {
-            startNextLevel();
-        }
+window.addEventListener('keydown', (e) => {
+    switch(e.code) {
+        case 'ArrowLeft':  case 'KeyA': state.input.left = true; break;
+        case 'ArrowRight': case 'KeyD': state.input.right = true; break;
+        case 'ArrowUp':    case 'KeyW': state.input.up = true; break;
+        case 'ArrowDown':  case 'KeyS': state.input.down = true; break;
+        case 'Space': 
+            if (!state.input.space) {
+                level.reverseRows();
+                state.input.space = true;
+            }
+            break;
     }
 });
-window.addEventListener('keyup', e => keys[e.code] = false);
 
-function startGame() {
-    score = 0;
-    temp = 45;
-    lives = 3;
-    level = 1;
-    // Reset speeds
-    rows[0].speed = 0.5;
-    rows[1].speed = -0.8;
-    rows[2].speed = 0.6;
-    rows[3].speed = -0.4;
-    startNextLevel();
-}
-
-function startNextLevel() {
-    temp = 45;
-    iglooBricks = 0;
-    gameState = STATE.PLAYING;
-    overlay.classList.add('hidden');
-    initIce();
-    enemies.length = 0;
-    spawnEnemies();
-    resetPlayerPosition();
-}
-
-function resetPlayerPosition() {
-    player.x = 80;
-    player.y = 160;
-    player.targetY = 160;
-    player.row = 4;
-    player.isJumping = false;
-}
-
-// Enemies
-const enemies = [];
-const bear = { x: 0, y: 15, dir: 1, speed: 0.5, width: 10, height: 10 };
-
-function spawnEnemies() {
-    rows.forEach((row, i) => {
-        if (Math.random() > 0.5) {
-            enemies.push({
-                row: i,
-                x: Math.random() * canvas.width,
-                speed: row.speed * 1.5,
-                type: 'BIRD',
-                width: 8,
-                height: 4
-            });
-        }
-    });
-}
-
-function update(dt) {
-    if (gameState !== STATE.PLAYING) return;
-
-    // Update Temperature
-    tempTimer += dt;
-    if (tempTimer > 2000) { // Every 2 seconds
-        temp--;
-        tempTimer = 0;
-        if (temp <= 0) die();
+window.addEventListener('keyup', (e) => {
+    switch(e.code) {
+        case 'ArrowLeft':  case 'KeyA': state.input.left = false; break;
+        case 'ArrowRight': case 'KeyD': state.input.right = false; break;
+        case 'ArrowUp':    case 'KeyW': state.input.up = false; break;
+        case 'ArrowDown':  case 'KeyS': state.input.down = false; break;
+        case 'Space':      state.input.space = false; break;
     }
+});
 
-    // Update Ice
-    rows.forEach(row => {
-        row.ice.forEach(block => {
-            block.x += row.speed;
-            if (block.x > canvas.width) block.x = -block.width;
-            if (block.x < -block.width) block.x = canvas.width;
-        });
-    });
+function handleDeath() {
+    if (window.stopLoop) stopLoop('drowning');
+    state.lives--;
+    if (state.lives < 0) {
+        state.gameOver = true;
+        alert("GAME OVER!");
+        location.reload();
+    } else {
+        player.reset();
+        level.temperature = 45;
+        level.resetPositions();
+        enemyManager.reset();
+    }
+}
+function updateHUD() {
+    let scoreText = state.score >= 1000000 ? "FISHES" : `${state.score}`;
+    
+    // Cleaner look: just numbers like original Atari
+    document.getElementById('score').innerText = scoreText;
+    document.getElementById('temp').innerText = `${level.temperature}°`;
+    document.getElementById('lives').innerText = `${state.lives}`;
+    document.getElementById('level').innerText = `${state.level}`;
+}
 
-    // Update Birds
-    enemies.forEach((enemy, index) => {
-        enemy.x += enemy.speed;
-        if (enemy.x > canvas.width) enemy.x = -enemy.width;
-        if (enemy.x < -enemy.width) enemy.x = canvas.width;
+/**
+ * Main Game Loop
+ */
+function gameLoop() {
+    if (state.gameOver) return;
 
-        // Collision with player
-        if (!player.isJumping && player.row === enemy.row) {
-            if (Math.abs(player.x - enemy.x) < 5) {
-                die();
+    // Clear Screen
+    ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+    if (state.mode === 'playing') {
+        // Update
+        player.update(state.input, level);
+        level.update(state.level);
+        enemyManager.update(state.level, player, level);
+        
+        if (level.checkGoal(player, state.input)) {
+            if (!player.isEnteringIgloo) {
+                player.jumpIntoIgloo();
             }
         }
-    });
 
-    // Update Bear (on top bank)
-    if (iglooBricks >= MAX_IGLOO_BRICKS / 2) {
-        bear.x += bear.dir * bear.speed;
-        if (bear.x > canvas.width - bear.width || bear.x < 0) bear.dir *= -1;
+        // Só processa vitória quando a animação de pulo retornar 'true'
+        if (player.iglooEntered) {
+            state.mode = 'levelEndIgloo';
+            let levelCap9 = Math.min(state.level, 9);
+            // Bônus de entrada é dividido pelas 16 peças do iglu (160 / 16 = 10 por nível)
+            state.levelBonusPointsPerPiece = levelCap9 * 10;
+            state.iglooDisassembleTimer = 0;
+            state.iglooDisassemblePiecesLeft = 16;
+            
+            state.tempBonusPoints = 10 * state.level;
+            state.levelEndTimer = 0;
+        }
 
-        // Collision with player on top bank
-        if (!player.isJumping && player.row === -1) {
-            if (Math.abs(player.x - bear.x) < 8) {
-                die();
+        if (!player.isJumping) {
+            const onSolidGround = level.checkBlockCollision(player, state);
+            if (!onSolidGround) {
+                state.mode = 'drowning';
+                player.startDrowning();
+            }
+        }
+
+        // Check Enemy Collisions + Fish Collection
+        if (!player.isJumping && state.mode === 'playing') {
+            for (let i = enemyManager.enemies.length - 1; i >= 0; i--) {
+                let enemy = enemyManager.enemies[i];
+                if (Physics.checkCollision(player, enemy)) {
+                    if (enemy.type === 'fish') {
+                        if (window.playSound) playSound('fish');
+                        // Collect fish: pause and score gradually (~1.6 sec = 100 frames at 2 pts)
+                        state.mode = 'fishScore';
+                        state.fishScorePending = 200;
+                        enemyManager.enemies.splice(i, 1);
+                    } else if (enemy.type === 'clam' && !enemy.isOpen) {
+                        // Ostra fechada é segura
+                        continue;
+                    } else {
+                        // Tocou em Goose, Crab, ou Clam Aberta -> Perde a vida se afogando na mesma hora
+                        state.mode = 'drowning';
+                        player.startDrowning();
+                    }
+                }
+            }
+
+            // Check Polar Bear Collision
+            // Somente verifica colisão se o jogador estiver de fato pousado na mesma linha (costa terrestre: -1)
+            if (enemyManager.polarBear && player.currentRow === -1 && Physics.checkCollision(player, enemyManager.polarBear)) {
+                state.mode = 'bearChase';
+                player.startBearChase(enemyManager.polarBear);
+            }
+        }
+
+        if (level.temperature <= 0 && state.mode === 'playing') {
+            state.mode = 'freezing';
+            player.startFreezing();
+        }
+    } else if (state.mode === 'fishScore') {
+        // Increment score gradually
+        state.fishScorePending -= 2;
+        state.score += 2;
+        if (state.fishScorePending % 8 === 0) {
+            if (window.playSound) playSound('scorecount');
+        }
+        if (state.fishScorePending <= 0) {
+            state.mode = 'playing';
+        }
+    } else if (state.mode === 'drowning') {
+        player.updateDrowning();
+        // O jogo pausa totalmente (plataformas e inimigos congelam no frame atual)
+        if (player.drownFinished && (window.isDrowningFinished ? isDrowningFinished() : true)) {
+            handleDeath();
+            state.mode = 'playing';
+        }
+    } else if (state.mode === 'freezing') {
+        player.updateFreezing();
+        // O jogo pausa totalmente (plataformas e inimigos congelam no frame atual)
+        if (player.freezeFinished && (window.isDrowningFinished ? isDrowningFinished() : true)) {
+            handleDeath();
+            state.mode = 'playing';
+        }
+    } else if (state.mode === 'bearChase') {
+        player.updateBearChase(enemyManager.polarBear);
+        // O jogo pausa o resto, mas o urso continua correndo atrás
+        if (enemyManager.polarBear) {
+            enemyManager.polarBear.x += enemyManager.polarBear.speed;
+            enemyManager.polarBear.frameCount++;
+            if (enemyManager.polarBear.frameCount > 8) {
+                enemyManager.polarBear.animFrame = enemyManager.polarBear.animFrame === 1 ? 3 : 1;
+                enemyManager.polarBear.frameCount = 0;
+            }
+        }
+        if (player.chaseFinished) {
+            handleDeath();
+            state.mode = 'playing';
+        }
+    } else if (state.mode === 'levelEndIgloo') {
+        state.iglooDisassembleTimer++;
+        // 6 segundos pra 16 peças a 60 fps ≈ 22.5 frames por peça
+        if (state.iglooDisassembleTimer >= 22) {
+            state.iglooDisassembleTimer = 0;
+            if (state.iglooDisassemblePiecesLeft > 0) {
+                state.iglooDisassemblePiecesLeft--;
+                level.iglooSegments--; // Remove a peça desenhada
+                state.score += state.levelBonusPointsPerPiece;
+                if (window.playSound) playSound('iglooblock');
+            } else {
+                state.mode = 'levelEndTemp';
+                state.levelEndTimer = 0;
+                // Calcula quantos frames leva para abaixar 1 grau, espalhando num total de 240 frames (4 segundos).
+                state.framesPerDegree = Math.max(1, Math.floor(240 / Math.max(1, level.temperature)));
+            }
+        }
+    } else if (state.mode === 'levelEndTemp') {
+        state.levelEndTimer++;
+        if (state.levelEndTimer >= state.framesPerDegree) { // Drena espalhado linearmente nos 4s
+            state.levelEndTimer = 0;
+            if (level.temperature > 0) {
+                level.temperature--;
+                state.score += state.tempBonusPoints;
+                if (window.playSound) playSound('scorecount');
+            } else {
+                // Fim da contagem, avança fase
+                state.level++;
+                level.temperature = INITIAL_TEMP;
+                level.iglooSegments = 0;
+                level.rows.forEach(r => r.color = 'white'); 
+                level.isNight = (state.level - 1) % 8 >= 4; 
+                player.reset();
+                state.mode = 'playing';
             }
         }
     }
 
-    // Handle Movement
-    if (!player.isJumping) {
-        if (keys['ArrowUp'] || keys['KeyW']) jump(0, -1);
-        else if (keys['ArrowDown'] || keys['KeyS']) jump(0, 1);
-        else if (keys['ArrowLeft'] || keys['KeyA']) jump(-1, 0);
-        else if (keys['ArrowRight'] || keys['KeyD']) jump(1, 0);
+    // Check Extra Life
+    if (state.score >= (state.lastLifeThreshold || 5000)) {
+        if (state.lives < 9) state.lives++;
+        state.lastLifeThreshold = (state.lastLifeThreshold || 5000) + 5000;
     }
 
-    if (player.isJumping) {
-        player.jumpProgress += 0.15; // Faster jump
-        if (player.jumpProgress >= 1) {
-            player.isJumping = false;
-            player.jumpProgress = 0;
-            checkLanding();
-        }
-    }
-
-    // If on ice row, move with ice
-    if (!player.isJumping && player.row >= 0 && player.row < 4) {
-        player.x += rows[player.row].speed;
-        // Check if fell in water
-        if (player.x < 0 || player.x > canvas.width - player.width) {
-            die();
-        }
-    }
-
-    // Check if player entered igloo
-    if (!player.isJumping && player.row === -1 && iglooBricks >= MAX_IGLOO_BRICKS) {
-        if (Math.abs(player.x - 78) < 6) {
-            win();
+    // Draw
+    if (spritesLoaded) {
+        level.draw(ctx);
+        enemyManager.draw(ctx);
+        if ((state.mode !== 'levelEndIgloo' && state.mode !== 'levelEndTemp') || !player.iglooEntered) {
+            player.draw(ctx);
         }
     }
 
     updateHUD();
-}
-
-function jump(dx, dy) {
-    player.isJumping = true;
-    player.dirX = dx;
-    player.dirY = dy;
-}
-
-function checkLanding() {
-    // Determine new position/row
-    if (player.dirY !== 0) {
-        player.row += player.dirY;
-        if (player.row < -1) player.row = -1;
-        if (player.row > 4) player.row = 4;
-    } else {
-        player.x += player.dirX * 30;
-    }
-
-    // Calculate actual Y based on row
-    if (player.row === 4) player.targetY = 160; // Start bank
-    else if (player.row === -1) player.targetY = 15; // Home bank (igloo)
-    else player.targetY = rows[player.row].y;
-
-    player.y = player.targetY;
-
-    // Check landing on ice
-    if (player.row >= 0 && player.row < 4) {
-        let landed = false;
-        rows[player.row].ice.forEach(block => {
-            if (player.x + player.width / 2 > block.x && player.x + player.width / 2 < block.x + block.width) {
-                landed = true;
-                if (block.state < 3) {
-                    block.state++;
-                    iglooBricks++;
-                    score += 10;
-                }
-            }
-        });
-        if (!landed) die();
-    }
-}
-
-function die() {
-    lives--;
-    if (lives < 0) {
-        gameState = STATE.GAME_OVER;
-        overlay.classList.remove('hidden');
-        overlayTitle.innerText = "GAME OVER";
-        overlayMsg.innerText = "PRESSIONE ESPAÇO PARA TENTAR";
-    } else {
-        resetPlayerPosition();
-        temp = 45;
-        level = 1; // Reset level on game over? Usually Frostbite resets from level 1.
-    }
-}
-
-function win() {
-    gameState = STATE.WON;
-    overlay.classList.remove('hidden');
-    overlayTitle.innerText = "NÍVEL " + level + " CONCLUÍDO!";
-    overlayMsg.innerText = "PRESSIONE ESPAÇO PARA O PRÓXIMO NÍVEL";
-    score += temp * 100;
-    level++;
-    // Speed up rows
-    rows.forEach(row => row.speed *= 1.2);
-}
-
-function updateHUD() {
-    scoreEl.innerText = score.toString().padStart(6, '0');
-    tempEl.innerText = temp;
-    livesEl.innerText = lives;
-}
-
-function draw() {
-    ctx.fillStyle = COLORS.WATER;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Draw Water Animation (waves)
-    ctx.strokeStyle = '#0000AA';
-    ctx.lineWidth = 1;
-    for (let i = 0; i < 10; i++) {
-        const wy = 30 + (i * 15) + (Date.now() / 100) % 15;
-        if (wy < 160) {
-            ctx.beginPath();
-            ctx.moveTo(0, wy);
-            ctx.lineTo(canvas.width, wy);
-            ctx.stroke();
-        }
-    }
-
-    // Draw Banks
-    ctx.fillStyle = COLORS.BANK;
-    ctx.fillRect(0, 0, canvas.width, 30); // Top
-    ctx.fillRect(0, 160, canvas.width, 32); // Bottom
-
-    // Draw Igloo progress
-    drawIgloo();
-
-    // Draw Ice
-    rows.forEach(row => {
-        row.ice.forEach(block => {
-            const colors = [COLORS.ICE, '#BBEBFF', '#77DDFF', COLORS.ICE_ACTIVE];
-            ctx.fillStyle = colors[block.state];
-            ctx.fillRect(block.x, row.y, block.width, 10);
-
-            // Texture detail
-            ctx.fillStyle = 'rgba(0,0,0,0.1)';
-            ctx.fillRect(block.x, row.y + 8, block.width, 2);
-        });
-    });
-
-    // Draw Birds
-    enemies.forEach(enemy => {
-        ctx.fillStyle = COLORS.BIRD;
-        ctx.fillRect(enemy.x, rows[enemy.row].y + 2, enemy.width, enemy.height);
-        // Wing animation
-        const wingY = Math.sin(Date.now() / 100) * 2;
-        ctx.fillRect(enemy.x + 2, rows[enemy.row].y + 2 + wingY, 4, 1);
-    });
-
-    // Draw Bear
-    if (iglooBricks >= MAX_IGLOO_BRICKS / 2) {
-        ctx.fillStyle = COLORS.BEAR;
-        ctx.fillRect(bear.x, bear.y, bear.width, bear.height);
-        // Bear detail
-        ctx.fillStyle = COLORS.BLACK;
-        ctx.fillRect(bear.x + (bear.dir > 0 ? 7 : 2), bear.y + 2, 1, 1); // Eye
-    }
-
-    // Draw Player
-    const jumpOffset = player.isJumping ? Math.sin(player.jumpProgress * Math.PI) * 10 : 0;
-    ctx.fillStyle = COLORS.PLAYER;
-    ctx.fillRect(player.x, player.y - jumpOffset - player.height, player.width, player.height);
-
-    // Draw Player Head/Eyes (simplified)
-    ctx.fillStyle = COLORS.BLACK;
-    ctx.fillRect(player.x + 1, player.y - jumpOffset - player.height + 1, 1, 1);
-    ctx.fillRect(player.x + 4, player.y - jumpOffset - player.height + 1, 1, 1);
 
     requestAnimationFrame(gameLoop);
 }
 
-function drawIgloo() {
-    const x = 70;
-    const y = 5;
-    const width = 20;
-    const height = 15;
-
-    ctx.strokeStyle = COLORS.BLACK;
-    ctx.lineWidth = 1;
-
-    // Base
-    if (iglooBricks > 0) {
-        ctx.fillStyle = COLORS.IGLOO;
-        // Draw layers based on bricks
-        const layers = Math.min(iglooBricks, MAX_IGLOO_BRICKS);
-        for (let i = 0; i < layers; i++) {
-            const lx = x + (i % 5) * 4;
-            const ly = y + Math.floor(i / 5) * 4;
-            ctx.fillRect(lx, 20 - ly, 4, 4);
-            ctx.strokeRect(lx, 20 - ly, 4, 4);
-        }
-    }
-
-    // Doorway opening
-    if (iglooBricks >= MAX_IGLOO_BRICKS) {
-        ctx.fillStyle = COLORS.BLACK;
-        ctx.fillRect(78, 15, 4, 6);
-    }
-}
-
-function gameLoop(time) {
-    const dt = time - lastTime;
-    lastTime = time;
-
-    update(dt);
-    draw();
-}
-
-requestAnimationFrame(gameLoop);
-initIce();
-updateHUD();
+// Start Game
+gameLoop();
