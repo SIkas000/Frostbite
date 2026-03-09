@@ -8,8 +8,8 @@ class Player {
         this.height = 36;
         this.reset();
 
-        this.speed = 0.4; // 10% slower movement (was 1.62)
-        this.jumpDuration = 95; // 10% slower jump time (was 30)
+        this.speed = 0.5; //  slower movement (was 1.62)
+        this.jumpDuration = 95; //  slower jump time (was 30)
     }
 
     reset() {
@@ -22,8 +22,8 @@ class Player {
         this.currentRow = -1;
         this.facing = 'right';
         this.animFrame = 1;
-        this.frameCount = 0;
         this.isGrabbed = false;
+        this.grabber = null;
         this.isEnteringIgloo = false;
         this.iglooEntered = false;
         this.isDrowning = false;
@@ -55,14 +55,14 @@ class Player {
         this.chaseFinished = false;
         this.isJumping = false; // Stop jumping logic
         this.chaseDelay = 25; // Aguarda frações de segundo para o jogador realmente "pousar/encostar" antes de iniciar a corrida
-        
+
         // Direção oposta ao urso
         this.chaseDirection = (this.x >= bear.x) ? 1 : -1;
         this.facing = this.chaseDirection === 1 ? 'right' : 'left';
-        
+
         // Redução da velocidade em mais de 35% (antes 2.5)
-        this.vx = this.chaseDirection * 1.6; 
-        
+        this.vx = this.chaseDirection * 1.6;
+
         if (window.playSound) playSound('jump');
     }
 
@@ -74,22 +74,22 @@ class Player {
         }
 
         this.x += this.vx;
-        
+
         // Animação de corrida um pouco adaptada pra nova velocidade
         this.frameCount++;
         if (this.frameCount > 8) {
             this.animFrame = this.animFrame === 1 ? 3 : 1;
             this.frameCount = 0;
         }
-        
+
         if (bear) {
             // Velocidade do urso reduzida em >35% (antes 2.1)
-            bear.speed = this.chaseDirection * 1.35; 
+            bear.speed = this.chaseDirection * 1.35;
             bear.isChasingOut = true;
         }
 
         // Verifica se fugiu totalmente da tela
-        if ((this.chaseDirection === -1 && this.x < -this.width) || 
+        if ((this.chaseDirection === -1 && this.x < -this.width) ||
             (this.chaseDirection === 1 && this.x > 400)) {
             this.chaseFinished = true;
         }
@@ -129,12 +129,17 @@ class Player {
             if (!this.isGrabbed && input.left) {
                 this.vx = -this.speed;
                 this.facing = 'left';
+                
                 this.frameCount++;
+                // Alterna entre o frame de andar e parado a cada 40 frames exatos (~0.6s em 60fps)
+                this.animFrame = Math.floor(this.frameCount / 30) % 2 === 0 ? 2 : 1;
             }
             else if (!this.isGrabbed && input.right) {
                 this.vx = this.speed;
                 this.facing = 'right';
+                
                 this.frameCount++;
+                this.animFrame = Math.floor(this.frameCount / 30) % 2 === 0 ? 2 : 1;
             }
             else {
                 this.vx = 0; // Para de se mover no eixo X
@@ -142,11 +147,6 @@ class Player {
                     this.animFrame = 1; // Volta para a pose inicial
                     this.frameCount = 0; // Garante que ao voltar a andar, comece do zero
                 }
-            }
-
-            if (this.frameCount > 22) {
-                this.animFrame = this.animFrame === 1 ? 2 : 1;
-                this.frameCount = 0;
             }
 
             // Row snapping logic (if on a row, follow its movement)
@@ -195,6 +195,10 @@ class Player {
         }
 
         this.x += this.vx;
+
+        if (this.isGrabbed && this.grabber) {
+            this.x = this.grabber.x;
+        }
 
         // Screen boundaries
         if (this.x < 0) this.x = 0;

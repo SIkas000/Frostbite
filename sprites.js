@@ -3,7 +3,8 @@ const PALETTES = {
     hero_frozen: ['transparent', '#1949a8', '#3365c7', '#67a7c7', '#2574a2'],
     bird: ['transparent', '#8490fc'],
     fish: ['transparent', '#6fe66f'],
-    bear: ['transparent', '#444444', '#000000']
+    bear: ['transparent', '#444444', '#000000'],
+    bear_night: ['transparent', '#ffffff', '#000000']
 };
 
 const SPRITE_DATA = {
@@ -498,6 +499,13 @@ const preRenderedSprites = {
     bear2_left: renderSpriteToCanvas('bear2', 'bear', true, 2.0),
     bear3_right: renderSpriteToCanvas('bear3', 'bear', false, 2.0),
     bear3_left: renderSpriteToCanvas('bear3', 'bear', true, 2.0),
+
+    bear1_right_night: renderSpriteToCanvas('bear1', 'bear_night', false, 2.0),
+    bear1_left_night: renderSpriteToCanvas('bear1', 'bear_night', true, 2.0),
+    bear2_right_night: renderSpriteToCanvas('bear2', 'bear_night', false, 2.0),
+    bear2_left_night: renderSpriteToCanvas('bear2', 'bear_night', true, 2.0),
+    bear3_right_night: renderSpriteToCanvas('bear3', 'bear_night', false, 2.0),
+    bear3_left_night: renderSpriteToCanvas('bear3', 'bear_night', true, 2.0),
 };
 
 window.preRenderedSprites = preRenderedSprites;

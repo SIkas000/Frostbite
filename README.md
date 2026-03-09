@@ -1,27 +1,38 @@
-# Frostbite Web Tribute
+# Web Tribute to Frostbite
 
-A playable clone of the 1983 Atari 2600 classic **Frostbite**, built for the web using HTML5 Canvas and Vanilla JavaScript.
+Playable web version of the 1983 Atari 2600 classic, **Frostbite**, developed using HTML5 Canvas and pure JavaScript.
+
+## Debug Tools
+- **Level Change** Level change is done using numbers 1 through 9; zero is level 10.
+
+- **Complete Igloo Test:** It automatically completes the igloo so the player can enter and advance to the next level.
 
 ## Features
-- **Faithful Mechanics:** All original movement, scoring, and enemy behaviors.
-- **Pixel Perfect:** 4x scaled pixel art with `image-rendering: pixelated`.
-- **Dynamic Physics:** Curved jumping just like the original.
-- **Progressive Difficulty:** Day/Night cycles and increasing enemy speed.
+- **Mechanics** Movement, scoring, and enemy behavior similar to the original.
+
+- **Progressive Difficulty:** Day/night cycles and increased enemy speed.
 
 ## Controls
-- **Arrow Keys / WASD:** Move Frostbite Bailey.
-- **Space:** Reverse the direction of the ice floes (costs 1 igloo block).
+- **Arrows / WASD:** Move Frostbite Bailey.
 
-## Technical Stack
+- **Spacebar:** Reverse the direction of the ice blocks (costs 1 igloo block).
+
+## Technologies Used
 - HTML5 Canvas
-- Vanilla JavaScript
-- Plain CSS
+- Pure JavaScript
+- Pure CSS
 
 ## Project Structure
 - `index.html`: Main entry point.
-- `style.css`: Visual styling and layout.
-- `game.js`: Core game loop and state.
+
+- `style.css`: Visual style and layout.
+
+- `game.js`: Main game loop and state.
+
 - `player.js`: Player logic and physics.
-- `enemies.js`: Enemy AI and spawning.
+
+- `enemies.js`: AI and enemy generation.
+
 - `physics.js`: Shared collision and physics utilities.
-- `level.js`: Ice floes, Igloo, and level state.
+
+- `level.js`: Ice blocks, igloo, and level state.

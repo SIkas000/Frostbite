@@ -11,6 +11,7 @@ const CANVAS_HEIGHT = 300;
 const INITIAL_TEMP = 45;
 const ONEUP_GOAL = 5000;
 const DOOR_X = 276;
+const IGLOO_ANIM_FRAMES = 17; // Quantidade de frames por peça do iglu - menor = mais rápido (original era 22)
 
 canvas.width = CANVAS_WIDTH;
 canvas.height = CANVAS_HEIGHT;
@@ -25,7 +26,10 @@ const state = {
     level: 1,
     gameOver: false,
     mode: 'playing', // 'playing', 'fishScore', 'drowning', 'freezing', 'levelEndIgloo', 'levelEndTemp'
+    isPaused: false,
+    startTimer: 120, // 2 segundos a 60fps para início de fase
     fishScorePending: 0,
+    fishCollected: 0,
     levelEndTimer: 0,
     iglooDisassembleTimer: 0,
     iglooDisassemblePiecesLeft: 0,
@@ -47,27 +51,62 @@ const enemyManager = new EnemyManager();
 
 // Input Handling
 window.addEventListener('keydown', (e) => {
-    switch(e.code) {
-        case 'ArrowLeft':  case 'KeyA': state.input.left = true; break;
+    // Atalho de DEBUG: Completa o Iglu instantaneamente com a tecla ; (ou ç dependendo de mapeamento ABNT)
+    if (e.key === ';' || e.key === 'ç') {
+        level.iglooSegments = 16;
+        if (window.playSound) playSound('block');
+    }
+
+    switch (e.code) {
+        case 'ArrowLeft': case 'KeyA': state.input.left = true; break;
         case 'ArrowRight': case 'KeyD': state.input.right = true; break;
-        case 'ArrowUp':    case 'KeyW': state.input.up = true; break;
-        case 'ArrowDown':  case 'KeyS': state.input.down = true; break;
-        case 'Space': 
+        case 'ArrowUp': case 'KeyW': state.input.up = true; break;
+        case 'ArrowDown': case 'KeyS': state.input.down = true; break;
+        case 'Space':
             if (!state.input.space) {
                 level.reverseRows();
                 state.input.space = true;
+            }
+            break;
+        case 'Escape':
+            state.isPaused = !state.isPaused;
+            break;
+        case 'Digit1': case 'Numpad1':
+        case 'Digit2': case 'Numpad2':
+        case 'Digit3': case 'Numpad3':
+        case 'Digit4': case 'Numpad4':
+        case 'Digit5': case 'Numpad5':
+        case 'Digit6': case 'Numpad6':
+        case 'Digit7': case 'Numpad7':
+        case 'Digit8': case 'Numpad8':
+        case 'Digit9': case 'Numpad9':
+        case 'Digit0': case 'Numpad0':
+            
+            // Atalho de DEBUG: pula pra fase escolida pelo usuário no teclado
+            const num = parseInt(e.key);
+            if (!isNaN(num) && num >= 0 && num <= 9) {
+                let targetLevel = num === 0 ? 10 : num; // Se pressionar 0 vai pro nivel 10
+                state.level = targetLevel;
+                level.temperature = INITIAL_TEMP;
+                level.iglooSegments = 0;
+                level.resetPositions(state.level); // Reseta plataforma de gelo (volta posições ao padrão inicial)
+                level.isNight = (state.level - 1) % 8 >= 4;
+                state.fishCollected = 0;
+                player.reset();
+                enemyManager.reset(); // Limpa/reverte inimigos que estavam na tela
+                state.mode = 'playing';
             }
             break;
     }
 });
 
 window.addEventListener('keyup', (e) => {
-    switch(e.code) {
-        case 'ArrowLeft':  case 'KeyA': state.input.left = false; break;
+    switch (e.code) {
+        case 'ArrowLeft': case 'KeyA': state.input.left = false; break;
         case 'ArrowRight': case 'KeyD': state.input.right = false; break;
-        case 'ArrowUp':    case 'KeyW': state.input.up = false; break;
-        case 'ArrowDown':  case 'KeyS': state.input.down = false; break;
-        case 'Space':      state.input.space = false; break;
+        case 'ArrowUp': case 'KeyW': state.input.up = false; break;
+        case 'ArrowDown': case 'KeyS': state.input.down = false; break;
+        case 'Space': state.input.space = false; break;
     }
 });
 
@@ -81,13 +120,14 @@ function handleDeath() {
     } else {
         player.reset();
         level.temperature = 45;
-        level.resetPositions();
+        level.resetPositions(state.level);
         enemyManager.reset();
+        state.startTimer = 120; // 2s de espera após morte
     }
 }
 function updateHUD() {
     let scoreText = state.score >= 1000000 ? "FISHES" : `${state.score}`;
-    
+
     // Cleaner look: just numbers like original Atari
     document.getElementById('score').innerText = scoreText;
     document.getElementById('temp').innerText = `${level.temperature}°`;
@@ -104,12 +144,15 @@ function gameLoop() {
     // Clear Screen
     ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-    if (state.mode === 'playing') {
-        // Update
-        player.update(state.input, level);
+    if (!state.isPaused) {
+        if (state.startTimer > 0) {
+            state.startTimer--;
+        } else if (state.mode === 'playing') {
+            // Update
+            player.update(state.input, level);
         level.update(state.level);
-        enemyManager.update(state.level, player, level);
-        
+        enemyManager.update(state.level, player, level, state.fishCollected);
+
         if (level.checkGoal(player, state.input)) {
             if (!player.isEnteringIgloo) {
                 player.jumpIntoIgloo();
@@ -124,7 +167,7 @@ function gameLoop() {
             state.levelBonusPointsPerPiece = levelCap9 * 10;
             state.iglooDisassembleTimer = 0;
             state.iglooDisassemblePiecesLeft = 16;
-            
+
             state.tempBonusPoints = 10 * state.level;
             state.levelEndTimer = 0;
         }
@@ -147,14 +190,20 @@ function gameLoop() {
                         // Collect fish: pause and score gradually (~1.6 sec = 100 frames at 2 pts)
                         state.mode = 'fishScore';
                         state.fishScorePending = 200;
+                        state.fishCollected++;
                         enemyManager.enemies.splice(i, 1);
                     } else if (enemy.type === 'clam' && !enemy.isOpen) {
                         // Ostra fechada é segura
                         continue;
                     } else {
-                        // Tocou em Goose, Crab, ou Clam Aberta -> Perde a vida se afogando na mesma hora
-                        state.mode = 'drowning';
-                        player.startDrowning();
+                        // Qualquer outro inimigo aquático (Goose, Clam aberta, Crab) segura e arrasta o jogador lateralmente
+                        // Impedindo de se mexer até que caia da beirada do gelo na água
+                        if (!player.isGrabbed) {
+                            // Instantaneamente aumenta a velocidade em +0.4 ao encostar
+                            enemy.speed += (enemy.speed > 0) ? 0.4 : -0.4;
+                            player.isGrabbed = true;
+                            player.grabber = enemy;
+                        }
                     }
                 }
             }
@@ -172,10 +221,10 @@ function gameLoop() {
             player.startFreezing();
         }
     } else if (state.mode === 'fishScore') {
-        // Increment score gradually
-        state.fishScorePending -= 2;
-        state.score += 2;
-        if (state.fishScorePending % 8 === 0) {
+        // Increment score gradually (Faster: 10 pts per frame = ~20 frames total)
+        state.fishScorePending -= 10;
+        state.score += 10;
+        if (state.fishScorePending % 40 === 0) {
             if (window.playSound) playSound('scorecount');
         }
         if (state.fishScorePending <= 0) {
@@ -212,8 +261,7 @@ function gameLoop() {
         }
     } else if (state.mode === 'levelEndIgloo') {
         state.iglooDisassembleTimer++;
-        // 6 segundos pra 16 peças a 60 fps ≈ 22.5 frames por peça
-        if (state.iglooDisassembleTimer >= 22) {
+        if (state.iglooDisassembleTimer >= IGLOO_ANIM_FRAMES) {
             state.iglooDisassembleTimer = 0;
             if (state.iglooDisassemblePiecesLeft > 0) {
                 state.iglooDisassemblePiecesLeft--;
@@ -240,18 +288,22 @@ function gameLoop() {
                 state.level++;
                 level.temperature = INITIAL_TEMP;
                 level.iglooSegments = 0;
-                level.rows.forEach(r => r.color = 'white'); 
-                level.isNight = (state.level - 1) % 8 >= 4; 
+                level.resetPositions(state.level); // Reseta plataforma de gelo (volta posições ao padrão inicial)
+                level.isNight = (state.level - 1) % 8 >= 4;
+                state.fishCollected = 0;
                 player.reset();
+                enemyManager.reset(); // Limpa/reverte inimigos que estavam na tela
+                state.startTimer = 120; // 2 segundos de espera no novo nível
                 state.mode = 'playing';
             }
         }
     }
-
-    // Check Extra Life
-    if (state.score >= (state.lastLifeThreshold || 5000)) {
-        if (state.lives < 9) state.lives++;
-        state.lastLifeThreshold = (state.lastLifeThreshold || 5000) + 5000;
+    
+        // Check Extra Life
+        if (state.score >= (state.lastLifeThreshold || 5000)) {
+            if (state.lives < 9) state.lives++;
+            state.lastLifeThreshold = (state.lastLifeThreshold || 5000) + 5000;
+        }
     }
 
     // Draw
@@ -260,6 +312,15 @@ function gameLoop() {
         enemyManager.draw(ctx);
         if ((state.mode !== 'levelEndIgloo' && state.mode !== 'levelEndTemp') || !player.iglooEntered) {
             player.draw(ctx);
+        }
+        
+        if (state.isPaused) {
+            ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            ctx.fillStyle = "#fff";
+            ctx.font = "20px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText("- P A U S E -", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
         }
     }
 

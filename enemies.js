@@ -40,31 +40,24 @@ class SnowGoose extends Enemy {
     }
 }
 
+class Fish extends Enemy {
+    constructor(x, y, speed) {
+        super(x, y, speed, 'fish');
+    }
+}
+
 class KingCrab extends Enemy {
     constructor(x, y, speed) {
         super(x, y, speed, 'crab');
-        this.baseY = y;
-        this.offset = 0;
     }
 
     update() {
-        this.offset += 0.1;
-        this.y = this.baseY + Math.sin(this.offset) * 4; // Bobbing suave
         this.x += this.speed;
 
         this.frameCount++;
         if (this.frameCount > 15) {
             this.animFrame = this.animFrame === 1 ? 2 : 1;
             this.frameCount = 0;
-        }
-
-        // Bate e volta nas bordas da tela
-        if (this.x > 370) {
-            this.x = 370;
-            this.speed = -Math.abs(this.speed);
-        } else if (this.x < 0) {
-            this.x = 0;
-            this.speed = Math.abs(this.speed);
         }
     }
 }
@@ -155,82 +148,255 @@ class EnemyManager {
         this.polarBear = null; // Urso polar gerenciado de forma separada
         this.spawnCounter = 0;
         this.nextSpawnTimer = 0;
+        
+        // Fish specifics
+        this.fishTimer = 0;
+        this.setNextFishSpawn(1);
+    }
+
+    setNextCrabSpawn(levelNum) {
+        let minDelay = 300 - (levelNum * 15);
+        let maxDelay = 600 - (levelNum * 20);
+        if (minDelay < 60) minDelay = 60;
+        if (maxDelay < 120) maxDelay = 120;
+        this.crabSpawnDelay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
+        this.crabTimer = 0;
+    }
+
+    setNextFishSpawn(levelNum) {
+        let minDelay = 200 - (levelNum * 10);
+        let maxDelay = 400 - (levelNum * 15);
+        if (minDelay < 60) minDelay = 60;
+        if (maxDelay < 120) maxDelay = 120;
+        this.fishSpawnDelay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
+        this.fishTimer = 0;
+    }
+
+    getSpawnSafety(rowNum, defaultDirection) {
+        const rowYs = [134, 173, 212, 251];
+        
+        // Verifica qualquer entidade que esteja atuando fisicamente na mesma fileira atual (Y aproximado)
+        let entities = this.enemies.filter(e => Math.abs((e.y + 15) - rowYs[rowNum]) <= 25);
+
+        if (entities.length === 0) {
+            return { safe: true, direction: defaultDirection };
+        }
+
+        // Força obrigatoriamente a direção de quem já está na fileira (para não nascer de frente um para o outro)
+        let direction = entities[0].speed > 0 ? 1 : -1;
+        let safe = true;
+
+        entities.forEach(e => {
+            // O novo elemento só pode aparecer se TODOS os outros da fileira estiverem do meio pra frente da tela
+            if (direction === 1 && e.x < 180) safe = false; 
+            if (direction === -1 && e.x > 220) safe = false;
+        });
+
+        return { safe: safe, direction: direction };
     }
 
     spawn(levelNum, levelObj) {
-        // Limitar quantidade de inimigos na tela
+        // Limitar a quantidade de triggers do spawn padrao
         let maxEnemies = 1;
         if (levelNum === 2) maxEnemies = 2;
         if (levelNum >= 3) maxEnemies = 3;
 
-        // Sempre deixe o timer rolar pra não nascer tudo junto instantaneamente
+        // O bird tem que aparecer em menos de 2s quando a fase começa.
         if (!this.nextSpawnTimer) {
-            const minFrames = Math.max(120, 240 - levelNum * 5);
-            const maxFrames = Math.max(240, 420 - levelNum * 10);
-            this.nextSpawnTimer = Math.floor(Math.random() * (maxFrames - minFrames + 1)) + minFrames;
+            if (this.enemies.length === 0) {
+                // Menos de 2s para o primeiro spawn da fase (30 a 110 frames)
+                this.nextSpawnTimer = Math.floor(Math.random() * 80) + 30;
+            } else {
+                const minFrames = Math.max(120, 240 - levelNum * 5);
+                const maxFrames = Math.max(240, 420 - levelNum * 10);
+                this.nextSpawnTimer = Math.floor(Math.random() * (maxFrames - minFrames + 1)) + minFrames;
+            }
         }
 
         this.spawnCounter++;
         if (this.spawnCounter < this.nextSpawnTimer) return;
 
-        // Reset pro próximo spawn se atingiu o tempo
         this.spawnCounter = 0;
         this.nextSpawnTimer = 0;
 
-        // Verifica capacidade antes de spawnar
         if (this.enemies.length >= maxEnemies) return;
 
-        const row = Math.floor(Math.random() * 4);
-        const rowYs = [134, 173, 212, 251]; // Mesmas faixas das plataformas
-
-        // Define tipos permitidos baseado no nível
         let availableTypes = ['goose'];
-        if (levelNum >= 2) availableTypes.push('crab');
         if (levelNum >= 3) availableTypes.push('clam');
 
         const type = availableTypes[Math.floor(Math.random() * availableTypes.length)];
+        const rowYs = [134, 173, 212, 251];
 
         if (type === 'goose') {
-            const y = rowYs[row] - 25; // Voando acima do gelo
-            let speed = 0.3;
-            if (levelNum >= 3) speed = 1.5;
-            if (levelNum >= 5) speed = 2.0;
+            // "Pode ter momentos que eles vao aparecer em duas, uma, três ou quatro fileiras"
+            const numRows = Math.floor(Math.random() * 4) + 1; // 1 to 4 fileiras ao mesmo tempo
+            let rows = [0, 1, 2, 3];
+            rows.sort(() => Math.random() - 0.5);
+            rows = rows.slice(0, numRows);
+            
+            rows.forEach(r => {
+                let defaultDirection = Math.random() > 0.5 ? 1 : -1;
+                let safety = this.getSpawnSafety(r, defaultDirection);
+                
+                // Se não é seguro nascer porque a via está entupida ou no começo, aborta este ganso específico e tenta noutra.
+                if (!safety.safe) return;
+                
+                const y = rowYs[r] - 25;
+                const direction = safety.direction; // Respeita a direção universal do trânsito na fileira
+                
+                // Bird velocity is based on platform + 0.2, capped at level 5
+                let cappedLevel = Math.min(levelNum, 5);
+                let platSpd = 0.2; // Level 1 mult
+                if (cappedLevel >= 2) platSpd = 0.4;
+                if (cappedLevel >= 4) platSpd = 0.5;
 
-            const direction = Math.random() > 0.5 ? 1 : -1;
-            speed *= direction;
-            const x = direction > 0 ? -50 : 450;
-            this.enemies.push(new SnowGoose(x, y, speed));
-
-        } else if (type === 'crab') {
-            const y = rowYs[row] - 20; // Andando no gelo
-            let speed = 0.8;
-            if (levelNum >= 4) speed = 1.1;
-            if (levelNum >= 6) speed = 1.4;
-
-            const direction = Math.random() > 0.5 ? 1 : -1;
-            speed *= direction;
-            // Spawn já dentro da tela para começar a bater nas bordas
-            const x = Math.random() > 0.5 ? 10 : 360;
-            this.enemies.push(new KingCrab(x, y, speed));
-
+                let speed = platSpd + 0.2;
+                speed *= direction;
+                const x = direction > 0 ? -50 : 450;
+                this.enemies.push(new SnowGoose(x, y, speed));
+            });
         } else if (type === 'clam') {
-            const y = rowYs[row] - 15; // Parada no gelo
+            const row = Math.floor(Math.random() * 4);
             let platformSpeed = 1.0;
             if (levelObj && levelObj.rows[row]) {
                 platformSpeed = levelObj.rows[row].direction * levelObj.rows[row].speed * levelObj.speedMult;
             }
             const x = Math.random() * 300 + 40; // Spawna dentro da tela
+            const y = rowYs[row] - 15; // Parada no gelo
             this.enemies.push(new Clam(x, y, platformSpeed));
         }
     }
 
-    update(levelNum, player, levelObj) {
+    spawnCrab(levelNum, levelObj) {
+        const rowOptions = [0, 2]; // "apenas fileiras pares de caranguejos" - (visual 1 e 3)
+        const rowNum = rowOptions[Math.floor(Math.random() * rowOptions.length)];
+        const rowYs = [134, 173, 212, 251];
+
+        // "velocidade da plataforma contudo com -0.3"
+        let platSpeed = 1.0;
+        if (levelObj && levelObj.rows[rowNum]) {
+            platSpeed = Math.abs(levelObj.rows[rowNum].speed * levelObj.speedMult);
+        }
+        let speed = platSpeed - 0.3;
+        if (speed < 0.1) speed = 0.1;
+
+        let defaultDirection = Math.random() > 0.5 ? 1 : -1;
+        let safety = this.getSpawnSafety(rowNum, defaultDirection);
+        
+        if (!safety.safe) return; // Se a rua está cheia, o caranguejo não nasce. Ele tentará de novo no próximo frame.
+
+        const direction = safety.direction;
+        speed *= direction;
+        const x = direction > 0 ? -50 : 450;
+        this.enemies.push(new KingCrab(x, rowYs[rowNum] - 20, speed));
+    }
+
+    spawnFishGroup(levelNum, specificRow = -1) {
+        const rowYs = [134, 173, 212, 251];
+        const rowNum = specificRow === -1 ? Math.floor(Math.random() * 4) : specificRow;
+        const y = rowYs[rowNum] - 10;
+
+        // Velocidade baseada na plataforma + 0.2 (travada na fase 5), igual ao bird
+        let cappedLevel = Math.min(levelNum, 5);
+        let platSpd = 0.2; // Nível 1 base
+        if (cappedLevel >= 2) platSpd = 0.4;
+        if (cappedLevel >= 4) platSpd = 0.5;
+        
+        let speed = platSpd + 0.2;
+
+        let defaultDirection = Math.random() > 0.5 ? 1 : -1;
+        let safety = this.getSpawnSafety(rowNum, defaultDirection);
+        
+        if (!safety.safe) return; // Aborta e tenta fazer o cardume na próxima rodada
+
+        const direction = safety.direction;
+        speed *= direction;
+        
+        const startX = direction > 0 ? -50 : 450;
+        const fishCount = Math.floor(Math.random() * 3) + 2; // "podem varia entre 2 até 4" peixes
+
+        for (let i = 0; i < fishCount; i++) {
+            const xOffset = direction > 0 ? -(i * 45) : (i * 45);
+            this.enemies.push(new Fish(startX + xOffset, y, speed));
+        }
+    }
+
+    update(levelNum, player, levelObj, fishCollected = 0) {
         this.spawn(levelNum, levelObj);
-        this.enemies.forEach(e => e.update());
+        
+        // Caranguejos começam apenas na Fase 3
+        if (levelNum >= 3) {
+            let hasCrab = this.enemies.some(e => e.type === 'crab');
+            if (!hasCrab) {
+                this.crabTimer++;
+                if (this.crabTimer >= this.crabSpawnDelay) {
+                    this.spawnCrab(levelNum, levelObj);
+                }
+            }
+        }
 
-        // Remove inimigos voados que saem da tela por muito (limite amplo por causa da Ostra e limites do slider)
-        this.enemies = this.enemies.filter(e => e.x > -150 && e.x < 550);
+        // Cardume de Peixes normal aparece a partir da Fase 2 ("obrigatoriamente em algum momento")
+        // Mas pára se o player atingiu o limite de 12 (!fishCollected < 12)
+        if (levelNum >= 2 && fishCollected < 12) {
+            let hasFish = this.enemies.some(e => e.type === 'fish');
+            if (!hasFish) {
+                this.fishTimer++;
+                if (this.fishTimer >= this.fishSpawnDelay) {
+                    this.spawnFishGroup(levelNum);
+                }
+            }
+        }
+        // Salvar variáveis de estado antes de filtrar e atualizar os inimigos
+        let hadCrab = this.enemies.some(e => e.type === 'crab');
+        let hadFish = this.enemies.some(e => e.type === 'fish');
 
+        // Loop principal que faz os inimigos andarem
+        this.enemies.forEach(e => e.update(levelObj));
+
+        // Validar e remover inimigos que saíram da tela
+        const keptEnemies = [];
+        const offScreenEnemies = [];
+
+        for (let i = 0; i < this.enemies.length; i++) {
+            let e = this.enemies[i];
+            // Se ainda está visível/na margem segura
+            if (e.x > -150 && e.x < 550) {
+                keptEnemies.push(e);
+            } else {
+                offScreenEnemies.push(e);
+            }
+        }
+
+        this.enemies = keptEnemies;
+
+        // Regra de Substituição do Peixe (Somente a partir da Fase 6)
+        if (levelNum >= 6) {
+            // Conta em quais rows atuais temos inimigos removidos
+            // Para poder substituí-los antes de nascerem como pássaros de novo
+            offScreenEnemies.forEach(deadEnemy => {
+                // Acha a fileira aproximada em que este inimigo estava
+                const rowYs = [134, 173, 212, 251];
+                let rowNum = rowYs.findIndex(ry => Math.abs(deadEnemy.y + (deadEnemy.type === 'bear' ? 0 : 25) - ry) <= 30);
+                if (rowNum === -1) rowNum = Math.floor(Math.random() * 4); // Fallback
+
+                // 30% de chance do inimigo que sumiu ser substituído por um peixe
+                // Podendo engatilhar em múltiplas fileiras de uma vez, se mais de 1 inimigo sumir
+                if (Math.random() < 0.3 && fishCollected < 12) {
+                    this.spawnFishGroup(levelNum, rowNum); // Na Fase 6, se substituir chama logo um cardume pra aquela row
+                }
+            });
+        }
+        
+        let stillHasCrab = this.enemies.some(e => e.type === 'crab');
+        if (hadCrab && !stillHasCrab) {
+            this.setNextCrabSpawn(levelNum);
+        }
+
+        let stillHasFish = this.enemies.some(e => e.type === 'fish');
+        if (hadFish && !stillHasFish) {
+            this.setNextFishSpawn(levelNum);
+        }
+        
         // Gerenciamento do Urso Polar
         if (levelNum >= 4) {
             if (!this.polarBear) {
@@ -250,7 +416,8 @@ class EnemyManager {
             let pSprite = null;
 
             if (e.type === 'bear') {
-                pSprite = window.preRenderedSprites['bear' + e.animFrame + '_' + facing];
+                const nightSuffix = (typeof level !== 'undefined' && level.isNight) ? '_night' : '';
+                pSprite = window.preRenderedSprites['bear' + e.animFrame + '_' + facing + nightSuffix];
                 if (pSprite) {
                     ctx.drawImage(pSprite, e.x, e.y - 18); // offset -18 ajusta o padding transparente do canvas 2.0
                 }

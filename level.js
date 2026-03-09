@@ -10,23 +10,40 @@ class Level {
         this.lastTempUpdate = Date.now();
         this.isNight = false;
 
-        this.initRows();
+        this.initRows(1);
     }
 
-    initRows() {
+    initRows(levelNum = 1) {
+        // Reduzindo a largura pela metade (50%) especificamente na Fase 2: de 60px para 30px
+        this.blockWidth = (levelNum === 2) ? 30 : 60;
+
         // 4 rows of ice floes
         for (let i = 0; i < 4; i++) {
-            const numBlocks = 3;
-            const spacing = 110; // Distância entre o começo de uma plataforma e a próxima
+            let numBlocks = 3;
+            let spacing = 110; // Distância entre o começo de uma plataforma e a próxima
+            let wrapLength = 500;
+
+            const startX = (i % 2 === 0) ? 140 : 10;
             const blocks = [];
 
-            // Organização em Comboio e Zig-Zag como no original
-            // Linha 1 e 3 (Pares, movem esq) concentram-se na Direita da tela
-            // Linha 2 e 4 (Ímpares, movem dir) concentram-se na Esquerda da tela
-            const startX = (i % 2 === 0) ? 140 : 10;
+            // "Segunda fase, as plataformas ficam em aspecto de unificadas"
+            if (levelNum === 2) {
+                // AJUSTE MANUAL: Altere o número somado abaixo para mudar a distância entre os blocos (era 9)
+                const distanciaEntreBlocos = 17; 
+                spacing = this.blockWidth + distanciaEntreBlocos; 
 
-            for (let j = 0; j < numBlocks; j++) {
-                blocks.push({ x: startX + j * spacing });
+                // Slot comboios: Dois grupos de 4 blocos bem espaçados entre si
+                const slots = [0, 1, 2, 3,  8, 9, 10, 11];
+                wrapLength = 600; // Maior que a tela (400) para garantir que nasçam nas extremidades
+                
+                slots.forEach(slot => {
+                    blocks.push({ x: startX + slot * spacing });
+                });
+            } else {
+                for (let j = 0; j < numBlocks; j++) {
+                    blocks.push({ x: startX + j * spacing });
+                }
+                wrapLength = 500; // Padrao original de giro das outras fases
             }
 
             this.rows.push({
@@ -34,22 +51,23 @@ class Level {
                 speed: 1.0, // Velocidade estática padronizada. O multiplicador de fase cuidará da velocidade final.
                 y: 134 + i * 39, // Matching IceRowsDATA: 134, 173, 212, 251
                 color: 'white', // Cor por fileira (Row State)
-                blocks: blocks
+                blocks: blocks,
+                wrapLength: wrapLength
             });
         }
     }
 
-    resetPositions() {
+    resetPositions(levelNum = 1) {
         this.rows = [];
-        this.initRows();
+        this.initRows(levelNum);
     }
 
-    update(levelNum = 0.2) {
+    update(levelNum = 0.3) {
         // Platform speed increases with level
         let speedMult = 0.2; // Fase 1
-        if (levelNum >= 2) speedMult = 0.3; // Fase 2-3
-        if (levelNum >= 4) speedMult = 0.4; // Fase 4-6
-        if (levelNum >= 7) speedMult = 0.5; // Fase 7+
+        if (levelNum >= 2) speedMult = 0.4; // Fase 2-3
+        if (levelNum >= 4) speedMult = 0.6; // Fase 4-6
+        if (levelNum >= 7) speedMult = 0.8; // Fase 7+
         this.speedMult = speedMult; // Save for player logic
 
         // Move ice floes
@@ -58,17 +76,18 @@ class Level {
                 block.x += row.direction * row.speed * speedMult;
 
                 // Wrapping de forma suave mantendo a separação (distância) matemática intacta.
-                if (block.x > 400) {
-                    block.x -= 500;
+                // Dinâmico por fase: wrapLength ajusta a largura da "fita" infinita para comportar os hiatos novos.
+                if (block.x > row.wrapLength - 100) {
+                    block.x -= row.wrapLength;
                 }
                 else if (block.x < -100) {
-                    block.x += 500;
+                    block.x += row.wrapLength;
                 }
             });
         });
 
-        // Update temperature (Original is 1 second interval)
-        if (Date.now() - this.lastTempUpdate > 1000) {
+        // Update temperature (45 degrees to 0 in 60 seconds = ~1333ms interval)
+        if (Date.now() - this.lastTempUpdate > 1333) {
             if (this.temperature > 0) this.temperature--;
             this.lastTempUpdate = Date.now();
         }
@@ -84,7 +103,7 @@ class Level {
         let onBlock = false;
 
         row.blocks.forEach(block => {
-            const blockWidth = 60; // Original
+            const blockWidth = this.blockWidth;
             if (player.x + player.width > block.x && player.x < block.x + blockWidth) {
                 onBlock = true;
             }
@@ -156,7 +175,7 @@ class Level {
                 // 3D Isometric slant drawing for blocks
                 for (let j = -8; j <= 8; j++) {
                     const slant = Math.floor(j * 1.5); // Slant shape "/"
-                    ctx.fillRect(block.x + slant, row.y - j, 60, 1);
+                    ctx.fillRect(block.x + slant, row.y - j, this.blockWidth, 1);
                 }
             });
         });
