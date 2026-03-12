@@ -14,9 +14,9 @@ class Enemy {
         this.frameCount = 0;
     }
 
-    update() {
-        this.x += this.speed;
-        this.frameCount++;
+    update(dt) {
+        this.x += this.speed * dt;
+        this.frameCount += dt;
         if (this.frameCount > 45) {
             this.animFrame = this.animFrame === 1 ? 2 : 1;
             this.frameCount = 0;
@@ -27,7 +27,6 @@ class Enemy {
         switch (this.type) {
             case 'goose': return '#f00';
             case 'crab': return '#ff0';
-            case 'clam': return '#0f0';
             case 'bear': return '#444';
             default: return '#888';
         }
@@ -51,40 +50,13 @@ class KingCrab extends Enemy {
         super(x, y, speed, 'crab');
     }
 
-    update() {
-        this.x += this.speed;
+    update(dt) {
+        this.x += this.speed * dt;
 
-        this.frameCount++;
+        this.frameCount += dt;
         if (this.frameCount > 15) {
             this.animFrame = this.animFrame === 1 ? 2 : 1;
             this.frameCount = 0;
-        }
-    }
-}
-
-class Clam extends Enemy {
-    constructor(x, y, speed) {
-        super(x, y, speed, 'clam');
-        this.openTimer = Math.floor(Math.random() * 90); // Start at random open/close phase
-        this.isOpen = false;
-        this.animFrame = 1; // 1 = Fechada, 2 = Aberta
-    }
-
-    update() {
-        this.x += this.speed;
-
-        this.openTimer++;
-        if (this.openTimer >= 90) { // 1.5s aberto/fechado a 60fps
-            this.openTimer = 0;
-            this.isOpen = !this.isOpen;
-            this.animFrame = this.isOpen ? 2 : 1;
-        }
-
-        // Loop contínuo com a plataforma de gelo
-        if (this.speed > 0 && this.x > 450) {
-            this.x = -100;
-        } else if (this.speed < 0 && this.x < -100) {
-            this.x = 450;
         }
     }
 }
@@ -96,10 +68,10 @@ class PolarBear extends Enemy {
         this.height = 28; // visual height at scale 2.0 (excluding transparent padding)
     }
 
-    update(player) {
+    update(player, dt) {
         // Inteligência Leve: Persegue o player de forma compassada (não teleguiado)
         if (player) {
-            this.aiTimer = (this.aiTimer || 0) + 1;
+            this.aiTimer = (this.aiTimer || 0) + dt;
             // O urso "avalia" a posição do player e muda a direção de tempos em tempos (a cada 90 frames / 1.5 seg)
             if (this.aiTimer >= 90) {
                 this.aiTimer = 0;
@@ -112,11 +84,11 @@ class PolarBear extends Enemy {
             }
         }
 
-        this.x += this.speed;
+        this.x += this.speed * dt;
 
         // Sistema de animação
         if (this.speed !== 0) {
-            this.frameCount++;
+            this.frameCount += dt;
             if (this.frameCount > 22) { // 22 matches the player's animation transition speed
                 this.animFrame = this.animFrame === 1 ? 3 : 1;
                 this.frameCount = 0;
@@ -195,7 +167,7 @@ class EnemyManager {
         return { safe: safe, direction: direction };
     }
 
-    spawn(levelNum, levelObj) {
+    spawn(levelNum, levelObj, dt) {
         // Limitar a quantidade de triggers do spawn padrao
         let maxEnemies = 1;
         if (levelNum === 2) maxEnemies = 2;
@@ -213,7 +185,7 @@ class EnemyManager {
             }
         }
 
-        this.spawnCounter++;
+        this.spawnCounter += (dt || 1);
         if (this.spawnCounter < this.nextSpawnTimer) return;
 
         this.spawnCounter = 0;
@@ -222,7 +194,7 @@ class EnemyManager {
         if (this.enemies.length >= maxEnemies) return;
 
         let availableTypes = ['goose'];
-        if (levelNum >= 3) availableTypes.push('clam');
+        // ostra removida
 
         const type = availableTypes[Math.floor(Math.random() * availableTypes.length)];
         const rowYs = [134, 173, 212, 251];
@@ -255,15 +227,6 @@ class EnemyManager {
                 const x = direction > 0 ? -50 : 450;
                 this.enemies.push(new SnowGoose(x, y, speed));
             });
-        } else if (type === 'clam') {
-            const row = Math.floor(Math.random() * 4);
-            let platformSpeed = 1.0;
-            if (levelObj && levelObj.rows[row]) {
-                platformSpeed = levelObj.rows[row].direction * levelObj.rows[row].speed * levelObj.speedMult;
-            }
-            const x = Math.random() * 300 + 40; // Spawna dentro da tela
-            const y = rowYs[row] - 15; // Parada no gelo
-            this.enemies.push(new Clam(x, y, platformSpeed));
         }
     }
 
@@ -321,14 +284,14 @@ class EnemyManager {
         }
     }
 
-    update(levelNum, player, levelObj, fishCollected = 0) {
-        this.spawn(levelNum, levelObj);
+    update(levelNum, player, levelObj, fishCollected, dt) {
+        this.spawn(levelNum, levelObj, dt);
         
         // Caranguejos começam apenas na Fase 3
         if (levelNum >= 3) {
             let hasCrab = this.enemies.some(e => e.type === 'crab');
             if (!hasCrab) {
-                this.crabTimer++;
+                this.crabTimer += dt;
                 if (this.crabTimer >= this.crabSpawnDelay) {
                     this.spawnCrab(levelNum, levelObj);
                 }
@@ -340,7 +303,7 @@ class EnemyManager {
         if (levelNum >= 2 && fishCollected < 12) {
             let hasFish = this.enemies.some(e => e.type === 'fish');
             if (!hasFish) {
-                this.fishTimer++;
+                this.fishTimer += dt;
                 if (this.fishTimer >= this.fishSpawnDelay) {
                     this.spawnFishGroup(levelNum);
                 }
@@ -351,7 +314,7 @@ class EnemyManager {
         let hadFish = this.enemies.some(e => e.type === 'fish');
 
         // Loop principal que faz os inimigos andarem
-        this.enemies.forEach(e => e.update(levelObj));
+        this.enemies.forEach(e => e.update(dt));
 
         // Validar e remover inimigos que saíram da tela
         const keptEnemies = [];
@@ -404,7 +367,7 @@ class EnemyManager {
                 // Ex: -1.0 para mais devagar, -2.5 para mais rápido.
                 this.polarBear = new PolarBear(370, 62, -0.6); // Y=62 alinha com pés, velocidade 0.7
             }
-            this.polarBear.update(player);
+            this.polarBear.update(player, dt);
         } else {
             this.polarBear = null;
         }
@@ -430,15 +393,6 @@ class EnemyManager {
                 // Legs toggle with animation
                 ctx.fillRect(e.x + 8, e.y + 14, 4, e.animFrame === 1 ? 6 : 2);
                 ctx.fillRect(e.x + 18, e.y + 14, 4, e.animFrame === 2 ? 6 : 2);
-                return;
-            } else if (e.type === 'clam') {
-                ctx.fillStyle = '#e8d254'; // Yellow
-                if (e.animFrame === 1) {
-                    ctx.fillRect(e.x + 4, e.y + 8, 22, 10);
-                } else {
-                    ctx.fillRect(e.x + 4, e.y, 22, 8); // Top shell
-                    ctx.fillRect(e.x + 4, e.y + 12, 22, 6); // Bottom shell
-                }
                 return;
             } else if (e.type === 'goose') {
                 pSprite = window.preRenderedSprites['bird' + e.animFrame + '_' + facing];

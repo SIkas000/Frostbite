@@ -11,7 +11,7 @@ const CANVAS_HEIGHT = 300;
 const INITIAL_TEMP = 45;
 const ONEUP_GOAL = 5000;
 const DOOR_X = 276;
-const IGLOO_ANIM_FRAMES = 17; // Quantidade de frames por peça do iglu - menor = mais rápido (original era 22)
+const IGLOO_ANIM_FRAMES = 8; // Mais rápido (era 17)
 
 canvas.width = CANVAS_WIDTH;
 canvas.height = CANVAS_HEIGHT;
@@ -126,7 +126,9 @@ function handleDeath() {
     }
 }
 function updateHUD() {
-    let scoreText = state.score >= 1000000 ? "FISHES" : `${state.score}`;
+    // Garante que o placar sempre mostre números inteiros (Atari style)
+    const displayScore = Math.floor(state.score);
+    let scoreText = displayScore >= 1000000 ? "FISHES" : `${displayScore}`;
 
     // Cleaner look: just numbers like original Atari
     document.getElementById('score').innerText = scoreText;
@@ -135,23 +137,34 @@ function updateHUD() {
     document.getElementById('level').innerText = `${state.level}`;
 }
 
+let lastTime = 0;
+const REFRESH_RATE = 60; // Base para normalização
+
 /**
  * Main Game Loop
  */
-function gameLoop() {
+function gameLoop(currentTime) {
     if (state.gameOver) return;
+
+    // Calcular Delta Time (dt)
+    if (!lastTime) lastTime = currentTime;
+    const elapsed = currentTime - lastTime;
+    lastTime = currentTime;
+
+    // dt será 1.0 se o jogo rodar a exatamente 60fps
+    const dt = elapsed / (1000 / REFRESH_RATE) || 1;
 
     // Clear Screen
     ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
     if (!state.isPaused) {
         if (state.startTimer > 0) {
-            state.startTimer--;
+            state.startTimer -= dt;
         } else if (state.mode === 'playing') {
             // Update
-            player.update(state.input, level);
-        level.update(state.level);
-        enemyManager.update(state.level, player, level, state.fishCollected);
+            player.update(state.input, level, dt);
+            level.update(state.level, dt);
+            enemyManager.update(state.level, player, level, state.fishCollected, dt);
 
         if (level.checkGoal(player, state.input)) {
             if (!player.isEnteringIgloo) {
@@ -221,35 +234,42 @@ function gameLoop() {
             player.startFreezing();
         }
     } else if (state.mode === 'fishScore') {
-        // Increment score gradually (Faster: 10 pts per frame = ~20 frames total)
-        state.fishScorePending -= 10;
-        state.score += 10;
-        if (state.fishScorePending % 40 === 0) {
-            if (window.playSound) playSound('scorecount');
+        // Incremento gradual dos pontos do peixe (200 pontos no total)
+        let toAdd = 10 * dt;
+        if (toAdd > state.fishScorePending) toAdd = state.fishScorePending;
+
+        state.score += toAdd;
+        state.fishScorePending -= toAdd;
+
+        if (Math.floor(state.fishScorePending + toAdd) % 40 < Math.floor(state.fishScorePending) % 40 || state.fishScorePending <= 0) {
+            // Toca o som de contagem em intervalos ou no final
+            if (window.playSound && state.fishScorePending > 0) playSound('scorecount');
         }
+        
         if (state.fishScorePending <= 0) {
+            state.score = Math.round(state.score); // Garante que terminamos com um inteiro
             state.mode = 'playing';
         }
     } else if (state.mode === 'drowning') {
-        player.updateDrowning();
+        player.updateDrowning(dt);
         // O jogo pausa totalmente (plataformas e inimigos congelam no frame atual)
         if (player.drownFinished && (window.isDrowningFinished ? isDrowningFinished() : true)) {
             handleDeath();
             state.mode = 'playing';
         }
     } else if (state.mode === 'freezing') {
-        player.updateFreezing();
+        player.updateFreezing(dt);
         // O jogo pausa totalmente (plataformas e inimigos congelam no frame atual)
         if (player.freezeFinished && (window.isDrowningFinished ? isDrowningFinished() : true)) {
             handleDeath();
             state.mode = 'playing';
         }
     } else if (state.mode === 'bearChase') {
-        player.updateBearChase(enemyManager.polarBear);
+        player.updateBearChase(enemyManager.polarBear, dt);
         // O jogo pausa o resto, mas o urso continua correndo atrás
         if (enemyManager.polarBear) {
-            enemyManager.polarBear.x += enemyManager.polarBear.speed;
-            enemyManager.polarBear.frameCount++;
+            enemyManager.polarBear.x += enemyManager.polarBear.speed * dt;
+            enemyManager.polarBear.frameCount += dt;
             if (enemyManager.polarBear.frameCount > 8) {
                 enemyManager.polarBear.animFrame = enemyManager.polarBear.animFrame === 1 ? 3 : 1;
                 enemyManager.polarBear.frameCount = 0;
@@ -260,7 +280,7 @@ function gameLoop() {
             state.mode = 'playing';
         }
     } else if (state.mode === 'levelEndIgloo') {
-        state.iglooDisassembleTimer++;
+        state.iglooDisassembleTimer += dt;
         if (state.iglooDisassembleTimer >= IGLOO_ANIM_FRAMES) {
             state.iglooDisassembleTimer = 0;
             if (state.iglooDisassemblePiecesLeft > 0) {
@@ -272,11 +292,11 @@ function gameLoop() {
                 state.mode = 'levelEndTemp';
                 state.levelEndTimer = 0;
                 // Calcula quantos frames leva para abaixar 1 grau, espalhando num total de 240 frames (4 segundos).
-                state.framesPerDegree = Math.max(1, Math.floor(240 / Math.max(1, level.temperature)));
+                state.framesPerDegree = Math.max(1, Math.floor(120 / Math.max(1, level.temperature)));
             }
         }
     } else if (state.mode === 'levelEndTemp') {
-        state.levelEndTimer++;
+        state.levelEndTimer += dt;
         if (state.levelEndTimer >= state.framesPerDegree) { // Drena espalhado linearmente nos 4s
             state.levelEndTimer = 0;
             if (level.temperature > 0) {
@@ -330,4 +350,4 @@ function gameLoop() {
 }
 
 // Start Game
-gameLoop();
+requestAnimationFrame(gameLoop);

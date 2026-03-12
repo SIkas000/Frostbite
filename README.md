@@ -1,4 +1,4 @@
-# Web Tribute to Frostbite
+# Web Tribute to Frostbite - In Progress...
 
 Playable web version of the 1983 Atari 2600 classic, **Frostbite**, developed using HTML5 Canvas and pure JavaScript.
 

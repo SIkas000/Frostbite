@@ -8,8 +8,8 @@ class Player {
         this.height = 36;
         this.reset();
 
-        this.speed = 0.5; //  slower movement (was 1.62)
-        this.jumpDuration = 95; //  slower jump time (was 30)
+        this.speed = 0.9; //  slower movement (was 1.62)
+        this.jumpDuration = 60; //  slower jump time (was 30)
     }
 
     reset() {
@@ -43,8 +43,8 @@ class Player {
         if (window.playSound) playSound('drowning');
     }
 
-    updateFreezing() {
-        this.freezeTimer--;
+    updateFreezing(dt) {
+        this.freezeTimer -= dt;
         if (this.freezeTimer <= 0) {
             this.freezeFinished = true;
         }
@@ -66,17 +66,17 @@ class Player {
         if (window.playSound) playSound('jump');
     }
 
-    updateBearChase(bear) {
+    updateBearChase(bear, dt) {
         if (this.chaseDelay > 0) {
-            this.chaseDelay--;
+            this.chaseDelay -= dt;
             if (bear) bear.speed = 0; // O urso para encarando o player
             return; // Espera finalizar o pequeno delay
         }
 
-        this.x += this.vx;
+        this.x += this.vx * dt;
 
         // Animação de corrida um pouco adaptada pra nova velocidade
-        this.frameCount++;
+        this.frameCount += dt;
         if (this.frameCount > 8) {
             this.animFrame = this.animFrame === 1 ? 3 : 1;
             this.frameCount = 0;
@@ -97,14 +97,15 @@ class Player {
 
     startDrowning() {
         this.isDrowning = true;
-        this.drownTimer = 300; // Duração: 5 segundos a 60fps (era 1 segundo)
+        this.drownDuration = 120; // Duração: 2 segundos a 60fps (Ajustado para o áudio)
+        this.drownTimer = this.drownDuration;
         this.drownFinished = false;
         this.drownY = this.y;
         if (window.playSound) playSound('drowning');
     }
 
-    updateDrowning() {
-        this.drownTimer--;
+    updateDrowning(dt) {
+        this.drownTimer -= dt;
         // Ele permanece na mesma posição Y onde morreu enquanto some pixel a pixel
         if (this.drownTimer <= 0) {
             this.drownFinished = true;
@@ -123,22 +124,22 @@ class Player {
         this.targetY = this.y; // Pula e cai no mesmo lugar, apenas imitando a entrada
     }
 
-    update(input, level) {
+    update(input, level, dt) {
         if (!this.isJumping) {
             // Horizontal movement
             if (!this.isGrabbed && input.left) {
                 this.vx = -this.speed;
                 this.facing = 'left';
                 
-                this.frameCount++;
-                // Alterna entre o frame de andar e parado a cada 40 frames exatos (~0.6s em 60fps)
+                this.frameCount += dt;
+                // Alterna entre o frame de andar e parado a cada 30 frames exatos
                 this.animFrame = Math.floor(this.frameCount / 30) % 2 === 0 ? 2 : 1;
             }
             else if (!this.isGrabbed && input.right) {
                 this.vx = this.speed;
                 this.facing = 'right';
                 
-                this.frameCount++;
+                this.frameCount += dt;
                 this.animFrame = Math.floor(this.frameCount / 30) % 2 === 0 ? 2 : 1;
             }
             else {
@@ -152,7 +153,7 @@ class Player {
             // Row snapping logic (if on a row, follow its movement)
             if (this.currentRow >= 0 && this.currentRow < 4) {
                 const row = level.rows[this.currentRow];
-                this.x += row.direction * row.speed * (level.speedMult || 1);
+                this.x += row.direction * row.speed * (level.speedMult || 1) * dt;
             }
 
             // Start Jump
@@ -178,8 +179,8 @@ class Player {
                 this.vx = 0; // Fica travado no eixo X enquanto faz a animação de entrar
             }
 
-            this.jumpFrame++;
-            const progress = this.jumpFrame / this.jumpDuration;
+            this.jumpFrame += dt;
+            const progress = Math.min(1, this.jumpFrame / this.jumpDuration);
 
             const jumpHeight = 40;
             this.y = this.startY + (this.targetY - this.startY) * progress - Math.sin(progress * Math.PI) * jumpHeight;
@@ -194,7 +195,7 @@ class Player {
             }
         }
 
-        this.x += this.vx;
+        this.x += this.vx * dt;
 
         if (this.isGrabbed && this.grabber) {
             this.x = this.grabber.x;
@@ -217,7 +218,7 @@ class Player {
 
         if (this.isDrowning) {
             ctx.save();
-            let progress = 1 - (this.drownTimer / 300); // 0.0 a 1.0 (5 segundos)
+            let progress = 1 - (this.drownTimer / this.drownDuration); // 0.0 a 1.0
 
             // Alternar lado a cada 1.2 segundos (72 frames)
             let currentFacing = (Math.floor(this.drownTimer / 72) % 2 === 0) ? 'left' : 'right';
@@ -240,7 +241,7 @@ class Player {
         }
 
         if (this.isFreezing) {
-            let progress = 1 - (this.freezeTimer / 180); // 0.0 a 1.0
+            let progress = 1 - (this.freezeTimer / this.freezeDuration); // 0.0 a 1.0
 
             // Alternar lado a cada 1.2 segundos (72 frames)
             let currentFacing = (Math.floor(this.freezeTimer / 72) % 2 === 0) ? 'left' : 'right';

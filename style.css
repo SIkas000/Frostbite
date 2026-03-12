@@ -26,10 +26,14 @@ body {
 #game-container {
     position: relative;
     box-shadow: 0 0 50px rgba(0, 85, 170, 0.4);
-    border: 10px solid #222;
-    border-radius: 20px;
+    border: 0.5vw solid #222; /* Responsive border */
+    border-radius: 1vw;
     background: #000;
-    transform: scale(2.2); /* Increased scale for original resolution */
+    
+    /* Configura o container para ser responsivo mantendo 4:3 */
+    width: min(95vw, calc(95vh * 4 / 3));
+    aspect-ratio: 4 / 3;
+    container-type: inline-size; /* Permite que o overlay use cqi para escalar */
 }
 
 #game-container::after {
@@ -40,59 +44,61 @@ body {
     left: 0;
     bottom: 0;
     right: 0;
-    background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+    background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.2) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.04), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.04));
     z-index: 2;
     background-size: 100% 4px, 3px 100%;
     pointer-events: none;
-    border-radius: 10px;
+    border-radius: 1vw;
 }
 
 canvas {
+    width: 100%;
+    height: 100%;
     display: block;
     background-color: #000;
     image-rendering: pixelated;
-    border-radius: 10px;
+    border-radius: 1vw;
 }
 
 #ui-overlay {
     position: absolute;
     top: 0;
     left: 0;
-    width: 400px; /* Mesma largura do canvas interno */
-    height: 36px;
-    display: block; /* Remove o flex descontrolado */
+    width: 100%;
+    height: 12%; /* 36 / 300 */
+    display: block;
     pointer-events: none;
-    font-size: 16px; /* Tamanho exato */
-    letter-spacing: 4px; /* Mais espaço entre os números */
-    text-shadow: 2px 2px 0px #000;
+    font-size: 4cqi; /* 16 / 400 = 4% da largura */
+    letter-spacing: 1cqi;
+    text-shadow: 0.5cqi 0.5cqi 0px #000;
     color: #ffffff;
     z-index: 10;
 }
 
 #ui-overlay #score {
     position: absolute;
-    top: 4px;
-    left: 80px;
-    width: 100px;
+    top: 1cqi;
+    left: 20cqi; /* 80 / 400 */
+    width: 25cqi;
     text-align: right;
 }
 
 #ui-overlay #lives {
     position: absolute;
-    top: 22px;
-    left: 130px;
-    width: 50px;
+    top: 5.5cqi; /* 22 / 400 */
+    left: 32.5cqi; /* 130 / 400 */
+    width: 12cqi;
     text-align: right;
 }
 
 #ui-overlay #temp {
     position: absolute;
-    top: 22px;
-    left: 10px;
-    width: 80px;
+    top: 5.5cqi;
+    left: 2.5cqi; /* 10 / 400 */
+    width: 20cqi;
     text-align: right;
 }
 
 #ui-overlay #level {
-    display: none; /* Hide to match reference image simplicity */
+    display: none;
 }

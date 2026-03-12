@@ -62,21 +62,20 @@ class Level {
         this.initRows(levelNum);
     }
 
-    update(levelNum = 0.3) {
+    update(levelNum = 0.3, dt) {
         // Platform speed increases with level
-        let speedMult = 0.2; // Fase 1
-        if (levelNum >= 2) speedMult = 0.4; // Fase 2-3
-        if (levelNum >= 4) speedMult = 0.6; // Fase 4-6
-        if (levelNum >= 7) speedMult = 0.8; // Fase 7+
+        let speedMult = 0.4; // Fase 1
+        if (levelNum >= 2) speedMult = 0.6; // Fase 2-3
+        if (levelNum >= 4) speedMult = 0.8; // Fase 4-6
+        if (levelNum >= 7) speedMult = 1.0; // Fase 7+
         this.speedMult = speedMult; // Save for player logic
 
         // Move ice floes
         this.rows.forEach(row => {
             row.blocks.forEach(block => {
-                block.x += row.direction * row.speed * speedMult;
+                block.x += row.direction * row.speed * speedMult * dt;
 
-                // Wrapping de forma suave mantendo a separação (distância) matemática intacta.
-                // Dinâmico por fase: wrapLength ajusta a largura da "fita" infinita para comportar os hiatos novos.
+                // Wrapping de forma suave
                 if (block.x > row.wrapLength - 100) {
                     block.x -= row.wrapLength;
                 }
